@@ -10,8 +10,8 @@ Objective:
 - Identify temporal and seasonal patterns
 - Generate policy-relevant insights suitable for academic or professional submission
 
-Author: <Your Name>
-Date: <Submission Date>
+Author: Abidoye Abdulmujeeb Abiola
+Date: 19-12-2025
 """
 
 # =========================
@@ -32,18 +32,17 @@ from scipy.stats import ttest_ind
 warnings.filterwarnings('ignore')
 
 sns.set_theme(style="whitegrid")
-plt.rcParams.update({
-    "figure.figsize": (12, 6),
-    "font.size": 11,
-    "axes.titlesize": 14,
-    "axes.labelsize": 12
-})
+plt.rcParams.update(
+    {
+        "figure.figsize": (12, 6),
+        "font.size": 11,
+        "axes.titlesize": 14,
+        "axes.labelsize": 12,
+    }
+)
 
-COLORS = {
-    "national": "#8E1B1B",
-    "rural": "#1F6F78",
-    "urban": "#E36414"
-}
+COLORS = {"national": "#8E1B1B", "rural": "#1F6F78", "urban": "#E36414"}
+
 
 # =========================
 # 2. DATA LOADING & CLEANING
@@ -90,6 +89,15 @@ def load_and_clean_data(file_path: Path, debug: bool = False) -> pd.DataFrame:
         print("\n[DEBUG] After standardizing column names:")
         print(df.head())
 
+    # Explicitly handle potential duplicate 'region' column names after standardization
+    # If both 'region' and 'region.1' exist, assume 'region' (state) is primary
+    # and drop 'region.1'. This avoids creating duplicate column labels.
+    if 'region' in df.columns and 'region.1' in df.columns:
+        df = df.drop(columns=['region.1'])
+        if debug:
+            print("\n[DEBUG] Dropped 'region.1' to avoid name conflict:")
+            print(df.head())
+
     col_map = {}
     for col in df.columns:
         lc = col.lower()
@@ -133,6 +141,7 @@ def load_and_clean_data(file_path: Path, debug: bool = False) -> pd.DataFrame:
 
     return df
 
+
 # =========================
 # 3. FEATURE ENGINEERING
 # =========================
@@ -141,10 +150,12 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df['year'] = df['date'].dt.year
     df['month'] = df['date'].dt.month
     df['covid_period'] = np.where(
-        df['date'] < '2020-03-01', 'Pre-COVID',
-        np.where(df['date'] < '2020-07-01', 'Lockdown', 'Post-Lockdown')
+        df['date'] < '2020-03-01',
+        'Pre-COVID',
+        np.where(df['date'] < '2020-07-01', 'Lockdown', 'Post-Lockdown'),
     )
     return df
+
 
 # =========================
 # 4. ANALYSIS FUNCTIONS
@@ -153,23 +164,26 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 def state_level_summary(df: pd.DataFrame) -> pd.DataFrame:
     return (
         df.groupby(['region', 'area'])
-          .agg(avg_unemployment=('estimated_unemployment_rate', 'mean'))
-          .reset_index()
+        .agg(avg_unemployment=('estimated_unemployment_rate', 'mean'))
+        .reset_index()
     )
 
 
 def covid_impact_analysis(df: pd.DataFrame) -> pd.DataFrame:
     summary = (
         df.groupby(['covid_period', 'area'])['estimated_unemployment_rate']
-          .mean()
-          .reset_index()
+        .mean()
+        .reset_index()
     )
 
-    pivot = summary.pivot(index='area', columns='covid_period', values='estimated_unemployment_rate')
+    pivot = summary.pivot(
+        index='area', columns='covid_period', values='estimated_unemployment_rate'
+    )
     pivot['absolute_change'] = pivot['Lockdown'] - pivot['Pre-COVID']
     pivot['percentage_change'] = (pivot['absolute_change'] / pivot['Pre-COVID']) * 100
 
     return pivot.reset_index()
+
 
 # =========================
 # 5. VISUALIZATIONS
@@ -203,15 +217,16 @@ def plot_monthly_seasonality(df: pd.DataFrame):
     plt.savefig('seasonality.png', dpi=300)
     plt.close()
 
+
 # =========================
 # 6. FORECASTING & TESTING
 # =========================
 
 def arima_forecast(df: pd.DataFrame, steps: int = 6) -> pd.DataFrame:
-    ts = df.groupby('date')['estimated_unemployment_rate'].mean().asfreq('MS').interpolate()
+    ts = df.groupby('date')['estimated_unemployment_rate'].mean().asfreq('M').interpolate() # Changed 'MS' to 'M'
     adf_p = adfuller(ts.dropna())[1]
 
-    model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,12), enforce_stationarity=False)
+    model = SARIMAX(ts, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), enforce_stationarity=False)
     results = model.fit(disp=False)
     forecast = results.get_forecast(steps=steps)
     out = forecast.summary_frame()
@@ -229,10 +244,18 @@ def arima_forecast(df: pd.DataFrame, steps: int = 6) -> pd.DataFrame:
 
 
 def lockdown_significance_test(df: pd.DataFrame) -> pd.DataFrame:
-    pre = df[df['covid_period']=='Pre-COVID']['estimated_unemployment_rate']
-    lock = df[df['covid_period']=='Lockdown']['estimated_unemployment_rate']
-    t,p = ttest_ind(pre, lock, equal_var=False)
-    return pd.DataFrame({'test':['Welch t-test'],'t_statistic':[t],'p_value':[p],'significant_at_5pct':[p<0.05]})
+    pre = df[df['covid_period'] == 'Pre-COVID']['estimated_unemployment_rate']
+    lock = df[df['covid_period'] == 'Lockdown']['estimated_unemployment_rate']
+    t, p = ttest_ind(pre, lock, equal_var=False)
+    return pd.DataFrame(
+        {
+            'test': ['Welch t-test'],
+            't_statistic': [t],
+            'p_value': [p],
+            'significant_at_5pct': [p < 0.05],
+        }
+    )
+
 
 # =========================
 # 7. MAIN PIPELINE
@@ -241,7 +264,12 @@ def lockdown_significance_test(df: pd.DataFrame) -> pd.DataFrame:
 def main():
     print("Starting analysis...")
 
-    files = [f for ext in ('*.xls','*.xlsx','*.csv') for f in Path('.').glob(ext) if 'unemployment' in f.name.lower()]
+    files = [
+        f
+        for ext in ('*.xls', '*.xlsx', '*.csv')
+        for f in Path('.').glob(ext)
+        if 'unemployment' in f.name.lower()
+    ]
     if not files:
         raise FileNotFoundError("No unemployment dataset found")
 
